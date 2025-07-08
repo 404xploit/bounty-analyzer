@@ -2,63 +2,62 @@
 
 # Bounty Analyzer
 
-Ferramenta automatizada para análise e reconhecimento em programas de Bug Bounty. Desenvolvida em Go para máxima performance e fácil integração em pipelines de pentest/recon.
+Automated tool for analyzing and gathering intelligence on Bug Bounty programs. Built in Go for maximum performance and seamless integration into pentest/recon pipelines.
 
-## 🚀 Funcionalidades
+## 🚀 Features
 
-- Reconhecimento automatizado de alvos
-- Coleta e análise de subdomínios, endpoints e parâmetros
-- Identificação de potenciais vetores (IDOR, SSRF, etc)
-- Integração com APIs ou wordlists customizadas
-- Geração de relatórios ou integração com ferramentas externas
+- Automated target reconnaissance
+- Collection and analysis of subdomains, endpoints, and parameters
+- Identification of potential attack vectors (IDOR, SSRF, etc.)
+- Integration with custom APIs or wordlists
+- Report generation or export to external tools
 
-## 📦 Instalação
+## 📦 Installation
 
 ```bash
 git clone https://github.com/404xploit/bounty-analyzer.git
 cd bounty-analyzer
 go build
-# ou
+# or
 go install ./...
 ```
 
-## ⚡️ Uso Rápido
+## ⚡️ Quick Usage
 
 ```bash
-./bounty-analyzer -d target.com -o resultado.txt
+./bounty-analyzer -d target.com -o result.txt
 ```
 
-Parâmetros comuns:
+Common parameters:
 
-- -d: domínio ou lista de domínios
-- -o: arquivo de saída
-- --threads: customizar paralelismo
-- --mode: modo de análise (recon, bruteforce, endpoints, etc)
+- -d: domain or list of domains
+- -o: output file
+- --threads: customize concurrency
+- --mode: analysis mode (recon, bruteforce, endpoints, etc.)
 
-## 🔥 Exemplos de Comando
+## 🔥 Command Examples
 
-Recon básico:
+Basic reconnaissance:
 ```bash
-./bounty-analyzer -d lista.txt --mode recon
+./bounty-analyzer -d list.txt --mode recon
 ```
 
-Exploração de parâmetros:
+Parameter exploration:
 ```bash
-./bounty-analyzer -d alvo.com --mode params
+./bounty-analyzer -d target.com --mode params
 ```
 
-## 🧬 Customização
+## 🧬 Customization
 
-- Adapte wordlists em /lists/
-- Integre com scripts externos via STDIN/STDOUT
-- Edite módulos em Go pra incluir payloads próprios ou lógicas de bypass
+- Modify wordlists in /lists/
+- Integrate with external scripts via STDIN/STDOUT
+- Edit Go modules to add your own payloads or bypass logic
 
-## 🤝 Contribuição
+## 🤝 Contributing
 
-Pull requests, issues e sugestões são bem-vindos.
-Se for adaptar pra cenários underground, só cite as novas técnicas no PR.
+Pull requests, issues, and suggestions are welcome.
+If you adapt for more “underground” scenarios, just mention the new techniques in your PR.
 
-## ⚠️ Aviso
+## ⚠️ Disclaimer
 
-Uso destinado a pesquisas de segurança e pentest autorizado. Responsabilidade total do usuário.
-
+For authorized security research and pentest use only. The user is fully responsible for their actions.
