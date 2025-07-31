@@ -4,7 +4,7 @@
 
 Automated tool for analyzing and gathering intelligence on Bug Bounty programs. Built in Go for maximum performance and seamless integration into pentest/recon pipelines.
 
-## 🚀 Features
+##  Features
 
 - Automated target reconnaissance
 - Collection and analysis of subdomains, endpoints, and parameters
@@ -12,7 +12,7 @@ Automated tool for analyzing and gathering intelligence on Bug Bounty programs. 
 - Integration with custom APIs or wordlists
 - Report generation or export to external tools
 
-## 📦 Installation
+##  Installation
 
 ```bash
 git clone https://github.com/404xploit/bounty-analyzer.git
@@ -22,7 +22,7 @@ go build
 go install ./...
 ```
 
-## ⚡️ Quick Usage
+##  Quick Usage
 
 ```bash
 ./bounty-analyzer -d target.com -o result.txt
@@ -35,7 +35,7 @@ Common parameters:
 - --threads: customize concurrency
 - --mode: analysis mode (recon, bruteforce, endpoints, etc.)
 
-## 🔥 Command Examples
+##  Command Examples
 
 Basic reconnaissance:
 ```bash
@@ -47,7 +47,7 @@ Parameter exploration:
 ./bounty-analyzer -d target.com --mode params
 ```
 
-## 🧬 Customization
+##  Customization
 
 - Modify wordlists in /lists/
 - Integrate with external scripts via STDIN/STDOUT
