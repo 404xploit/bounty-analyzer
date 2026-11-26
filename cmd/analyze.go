@@ -26,7 +26,9 @@ func AnalyzeProgram(programName string) error {
 		}
 		cache.Programs[programName] = program
 		cache.LastUpdated = program.UpdatedAt
-		api.SaveCache(cache)
+		if err := api.SaveCache(cache); err != nil {
+			return fmt.Errorf("save report cache: %w", err)
+		}
 	}
 
 	var totalBounty float64

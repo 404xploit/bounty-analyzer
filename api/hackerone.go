@@ -217,17 +217,51 @@ func LoadCacheFrom(path string) Cache {
 	return cache
 }
 
-func SaveCache(cache Cache) {
+func SaveCache(cache Cache) error {
+	return SaveCacheTo(cacheFile, cache)
+}
+
+func SaveCacheTo(path string, cache Cache) error {
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("cache path cannot be empty")
+	}
+
 	data, err := json.MarshalIndent(cache, "", "  ")
 	if err != nil {
-		log.Fatalf("Erro ao serializar cache: %v", err)
+		return fmt.Errorf("serialize cache: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(cacheFile), 0755); err != nil {
-		log.Fatalf("Erro ao criar diretório de cache: %v", err)
+
+	directory := filepath.Dir(path)
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		return fmt.Errorf("create cache directory: %w", err)
 	}
-	if err := os.WriteFile(cacheFile, data, 0644); err != nil {
-		log.Fatalf("Erro ao salvar cache: %v", err)
+
+	temp, err := os.CreateTemp(directory, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temporary cache file: %w", err)
 	}
+	tempPath := temp.Name()
+	defer os.Remove(tempPath)
+
+	if err := temp.Chmod(0600); err != nil {
+		_ = temp.Close()
+		return fmt.Errorf("restrict cache file permissions: %w", err)
+	}
+	if _, err := temp.Write(data); err != nil {
+		_ = temp.Close()
+		return fmt.Errorf("write cache: %w", err)
+	}
+	if err := temp.Sync(); err != nil {
+		_ = temp.Close()
+		return fmt.Errorf("sync cache: %w", err)
+	}
+	if err := temp.Close(); err != nil {
+		return fmt.Errorf("close cache: %w", err)
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		return fmt.Errorf("replace cache: %w", err)
+	}
+	return nil
 }
 
 func ProgramNeedsRefresh(program Program, exists bool, now time.Time, maxAge time.Duration) bool {
