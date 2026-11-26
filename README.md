@@ -1,63 +1,45 @@
-
-
 # Bounty Analyzer
 
-Automated tool for analyzing and gathering intelligence on Bug Bounty programs. Built in Go for maximum performance and seamless integration into pentest/recon pipelines.
+Bounty Analyzer is a small Go CLI for reviewing public HackerOne Hacktivity data from a local cache. It is intended for authorized bug bounty research and reporting workflows.
 
-##  Features
+## Requirements
 
-- Automated target reconnaissance
-- Collection and analysis of subdomains, endpoints, and parameters
-- Identification of potential attack vectors (IDOR, SSRF, etc.)
-- Integration with custom APIs or wordlists
-- Report generation or export to external tools
+- Go 1.22 or newer
+- Network access to `hackerone.com` when refreshing a program
 
-##  Installation
+## Build and test
 
 ```bash
-git clone https://github.com/404xploit/bounty-analyzer.git
-cd bounty-analyzer
-go build
-# or
-go install ./...
+go test ./...
+go build -o bounty-analyzer .
 ```
 
-##  Quick Usage
+## Commands
+
+Analyze a program and refresh its cached public report data when the entry is older than 24 hours:
 
 ```bash
-./bounty-analyzer -d target.com -o result.txt
+./bounty-analyzer analyze --program khealth
 ```
 
-Common parameters:
+List reports still marked `new` whose disclosure timestamp is older than the selected number of days (default: 60):
 
-- -d: domain or list of domains
-- -o: output file
-- --threads: customize concurrency
-- --mode: analysis mode (recon, bruteforce, endpoints, etc.)
-
-##  Command Examples
-
-Basic reconnaissance:
 ```bash
-./bounty-analyzer -d list.txt --mode recon
+./bounty-analyzer zombie --days 60
 ```
 
-Parameter exploration:
+Find report titles containing one or more comma-separated keywords in the local cache:
+
 ```bash
-./bounty-analyzer -d target.com --mode params
+./bounty-analyzer dupes --keywords "graphql,idor,ssrf"
 ```
 
-##  Customization
+## Cache behavior
 
-- Modify wordlists in /lists/
-- Integrate with external scripts via STDIN/STDOUT
-- Edit Go modules to add your own payloads or bypass logic
+Cached data is stored at `data/reports_cache.json`. Each program has its own refresh timestamp, so refreshing one program does not make other cached programs appear fresh. Cache updates use a temporary file and atomic rename; the cache file is created with owner-only permissions.
 
-## 🤝 Contributing
+The `analyze` command retrieves public Hacktivity data. It does not authenticate to HackerOne or access private program reports.
 
-Pull requests, issues, and suggestions are welcome.
-If you adapt for more “underground” scenarios, just mention the new techniques in your PR.
+## Responsible use
 
-## ⚠️ Disclaimer
-
-For authorized security research and pentest use only. The user is fully responsible for their actions.
+Only use this tool for programs and information you are authorized to review. Respect HackerOne's terms, rate limits, and applicable disclosure requirements.

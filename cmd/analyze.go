@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -31,22 +33,40 @@ func AnalyzeProgram(programName string) error {
 		}
 	}
 
+	fmt.Print(formatAnalysis(program))
+	return nil
+}
+
+func formatAnalysis(program api.Program) string {
+	var output bytes.Buffer
 	var totalBounty float64
 	severityCount := make(map[string]int)
 	for _, report := range program.Reports {
 		totalBounty += report.BountyAwarded
-		if report.Severity != "" {
-			severityCount[report.Severity]++
+		if severity := report.Severity; severity != "" {
+			severityCount[severity]++
 		}
 	}
 
-	fmt.Printf("=== Análise do Programa: %s ===\n", program.Name)
-	fmt.Printf("Total de Reports: %d\n", len(program.Reports))
-	fmt.Printf("Porcentagem de Duplicatas: %.2f%%\n", program.DupePercentage)
-	fmt.Printf("Total Pago em Bounties: $%.2f\n", totalBounty)
-	fmt.Printf("Distribuição de Severidade:\n")
-	for severity, count := range severityCount {
-		fmt.Printf("  - %s: %d (%.2f%%)\n", severity, count, float64(count)/float64(len(program.Reports))*100)
+	fmt.Fprintf(&output, "=== Análise do Programa: %s ===\n", program.Name)
+	fmt.Fprintf(&output, "Total de Reports: %d\n", len(program.Reports))
+	fmt.Fprintf(&output, "Porcentagem de Duplicatas: %.2f%%\n", program.DupePercentage)
+	fmt.Fprintf(&output, "Total Pago em Bounties: $%.2f\n", totalBounty)
+	fmt.Fprintln(&output, "Distribuição de Severidade:")
+
+	severities := make([]string, 0, len(severityCount))
+	for severity := range severityCount {
+		severities = append(severities, severity)
 	}
-	return nil
+	sort.Strings(severities)
+
+	for _, severity := range severities {
+		percentage := 0.0
+		if len(program.Reports) > 0 {
+			percentage = float64(severityCount[severity]) / float64(len(program.Reports)) * 100
+		}
+		fmt.Fprintf(&output, "  - %s: %d (%.2f%%)\n", severity, severityCount[severity], percentage)
+	}
+
+	return output.String()
 }
