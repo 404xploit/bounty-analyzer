@@ -11,7 +11,11 @@ func AnalyzeProgram(programName string) error {
 	cache := api.LoadCache()
 	program, exists := cache.Programs[programName]
 	if !exists || time.Since(cache.LastUpdated).Hours() > 24 {
-		program = api.FetchProgramData(programName)
+		var err error
+		program, err = api.FetchProgramData(programName)
+		if err != nil {
+			return fmt.Errorf("fetch program %q: %w", programName, err)
+		}
 		cache.Programs[programName] = program
 		cache.LastUpdated = time.Now()
 		api.SaveCache(cache)

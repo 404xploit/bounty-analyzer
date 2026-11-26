@@ -1,12 +1,13 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,9 +24,9 @@ type Report struct {
 }
 
 type Program struct {
-	Handle         string   `json:"handle"`
-	Name           string   `json:"name"`
-	Reports        []Report `json:"reports"`
+	Handle          string   `json:"handle"`
+	Name            string   `json:"name"`
+	Reports         []Report `json:"reports"`
 	AvgResponseTime float64  `json:"avg_response_time"`
 	DupePercentage  float64  `json:"dupe_percentage"`
 }
@@ -36,93 +37,152 @@ type Cache struct {
 }
 
 const (
-	hackerOneAPI = "https://hackerone.com"
-	cacheFile    = "data/reports_cache.json"
+	hackerOneAPI       = "https://hackerone.com"
+	cacheFile          = "data/reports_cache.json"
+	maxResponseBytes   = 8 << 20
+	maxErrorBodyBytes  = 4 << 10
+	requestTimeout     = 10 * time.Second
+	paginationWaitTime = 500 * time.Millisecond
 )
 
-func FetchProgramData(programName string) Program {
-	var reports []Report
-	var dupes int
-	page := 1
+func FetchProgramData(programName string) (Program, error) {
+	client := &http.Client{Timeout: requestTimeout}
+	return FetchProgramDataWithClient(context.Background(), client, programName)
+}
 
-	client := &http.Client{
-		Timeout: 10 * time.Second,
+// FetchProgramDataWithClient fetches all public Hacktivity pages for a program.
+// The supplied client makes the request behavior testable without live API calls.
+func FetchProgramDataWithClient(ctx context.Context, client *http.Client, programName string) (Program, error) {
+	return fetchProgramData(ctx, client, hackerOneAPI, programName, waitForNextPage)
+}
+
+func fetchProgramData(ctx context.Context, client *http.Client, baseURL, programName string, wait func(context.Context) error) (Program, error) {
+	handle := strings.TrimSpace(programName)
+	if handle == "" {
+		return Program{}, fmt.Errorf("program handle cannot be empty")
+	}
+	if handle == "." || handle == ".." || strings.ContainsAny(handle, "/\\?#") {
+		return Program{}, fmt.Errorf("invalid program handle %q", programName)
+	}
+	if ctx == nil {
+		return Program{}, fmt.Errorf("request context cannot be nil")
+	}
+	if client == nil {
+		client = &http.Client{Timeout: requestTimeout}
 	}
 
-	for {
-		url := fmt.Sprintf("%s/%s/hacktivity.json?sort_type=latest_disclosable_activity_at&page=%d", hackerOneAPI, programName, page)
-		req, err := http.NewRequest("GET", url, nil)
-		if err != nil {
-			log.Fatalf("Erro ao criar requisição para página %d: %v", page, err)
+	endpoint := strings.TrimRight(baseURL, "/") + "/" + url.PathEscape(handle) + "/hacktivity.json"
+	query := url.Values{}
+	query.Set("sort_type", "latest_disclosable_activity_at")
+
+	var reports []Report
+	var duplicateCount int
+
+	for page := 1; ; page++ {
+		if page > 1 && wait != nil {
+			if err := wait(ctx); err != nil {
+				return Program{}, fmt.Errorf("wait before page %d: %w", page, err)
+			}
 		}
 
-		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-
+		query.Set("page", fmt.Sprintf("%d", page))
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"?"+query.Encode(), nil)
+		if err != nil {
+			return Program{}, fmt.Errorf("create request for page %d: %w", page, err)
+		}
+		req.Header.Set("User-Agent", "bounty-analyzer/1.0")
 		resp, err := client.Do(req)
 		if err != nil {
-			log.Fatalf("Erro ao buscar dados da página %d: %v", page, err)
+			return Program{}, fmt.Errorf("request page %d: %w", page, err)
 		}
-		defer resp.Body.Close()
 
-		if resp.StatusCode != 200 {
-			log.Printf("Resposta inesperada na página %d: %d", page, resp.StatusCode)
+		pageReports, readErr := decodeReportsPage(resp, page)
+		closeErr := resp.Body.Close()
+		if readErr != nil {
+			return Program{}, readErr
+		}
+		if closeErr != nil {
+			return Program{}, fmt.Errorf("close response body for page %d: %w", page, closeErr)
+		}
+		if len(pageReports) == 0 {
 			break
 		}
 
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Fatalf("Erro ao ler resposta da página %d: %v", page, err)
-		}
-
-		var result struct {
-			Reports []struct {
-				ID            string    `json:"id"`
-				Title         string    `json:"title"`
-				CreatedAt     time.Time `json:"disclosed_at"`
-				Substate      string    `json:"substate"`
-				SeverityRating string    `json:"severity_rating"`
-				BountyAmount  float64   `json:"bounty_amount"`
-			} `json:"reports"`
-		}
-
-		err = json.Unmarshal(body, &result)
-		if err != nil {
-			log.Fatalf("Erro ao parsear JSON da página %d: %v", page, err)
-		}
-
-		if len(result.Reports) == 0 {
-			break
-		}
-
-		for _, r := range result.Reports {
-			if r.Substate == "duplicate" {
-				dupes++
+		for _, report := range pageReports {
+			if strings.EqualFold(report.State, "duplicate") {
+				duplicateCount++
 			}
-			reports = append(reports, Report{
-				ID:            r.ID,
-				Title:         r.Title,
-				CreatedAt:     r.CreatedAt,
-				State:         r.Substate,
-				Severity:      r.SeverityRating,
-				BountyAwarded: r.BountyAmount,
-			})
+			reports = append(reports, report)
 		}
-
-		page++
-		time.Sleep(time.Duration(500+rand.Intn(500)) * time.Millisecond)
 	}
 
 	dupePercentage := 0.0
 	if len(reports) > 0 {
-		dupePercentage = float64(dupes) / float64(len(reports)) * 100
+		dupePercentage = float64(duplicateCount) / float64(len(reports)) * 100
 	}
 
 	return Program{
-		Handle:         programName,
-		Name:           programName,
+		Handle:         handle,
+		Name:           handle,
 		Reports:        reports,
-		AvgResponseTime: 0,
 		DupePercentage: dupePercentage,
+	}, nil
+}
+
+func decodeReportsPage(resp *http.Response, page int) ([]Report, error) {
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrorBodyBytes))
+		return nil, fmt.Errorf("HackerOne returned %s on page %d", resp.Status, page)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read response page %d: %w", page, err)
+	}
+	if len(body) > maxResponseBytes {
+		return nil, fmt.Errorf("response page %d exceeds %d bytes", page, maxResponseBytes)
+	}
+
+	var result struct {
+		Reports []struct {
+			ID             string    `json:"id"`
+			Title          string    `json:"title"`
+			CreatedAt      time.Time `json:"disclosed_at"`
+			Substate       string    `json:"substate"`
+			SeverityRating string    `json:"severity_rating"`
+			BountyAmount   float64   `json:"bounty_amount"`
+		} `json:"reports"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("parse response page %d: %w", page, err)
+	}
+	if result.Reports == nil {
+		return nil, fmt.Errorf("parse response page %d: missing reports array", page)
+	}
+
+	reports := make([]Report, 0, len(result.Reports))
+	for _, report := range result.Reports {
+		reports = append(reports, Report{
+			ID:            report.ID,
+			Title:         report.Title,
+			CreatedAt:     report.CreatedAt,
+			State:         report.Substate,
+			Severity:      report.SeverityRating,
+			BountyAwarded: report.BountyAmount,
+		})
+	}
+	return reports, nil
+}
+
+func waitForNextPage(ctx context.Context) error {
+	timer := time.NewTimer(paginationWaitTime)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
 }
 
