@@ -1,11 +1,13 @@
-package main
+package cmd
 
 import (
 	"fmt"
+	"time"
+
 	"bounty-analyzer/api"
 )
 
-func analyzeProgram(programName string) {
+func AnalyzeProgram(programName string) error {
 	cache := api.LoadCache()
 	program, exists := cache.Programs[programName]
 	if !exists || time.Since(cache.LastUpdated).Hours() > 24 {
@@ -17,10 +19,10 @@ func analyzeProgram(programName string) {
 
 	var totalBounty float64
 	severityCount := make(map[string]int)
-	for _, r := range program.Reports {
-		totalBounty += r.BountyAwarded
-		if r.Severity != "" {
-			severityCount[r.Severity]++
+	for _, report := range program.Reports {
+		totalBounty += report.BountyAwarded
+		if report.Severity != "" {
+			severityCount[report.Severity]++
 		}
 	}
 
@@ -29,7 +31,8 @@ func analyzeProgram(programName string) {
 	fmt.Printf("Porcentagem de Duplicatas: %.2f%%\n", program.DupePercentage)
 	fmt.Printf("Total Pago em Bounties: $%.2f\n", totalBounty)
 	fmt.Printf("Distribuição de Severidade:\n")
-	for sev, count := range severityCount {
-		fmt.Printf("  - %s: %d (%.2f%%)\n", sev, count, float64(count)/float64(len(program.Reports))*100)
+	for severity, count := range severityCount {
+		fmt.Printf("  - %s: %d (%.2f%%)\n", severity, count, float64(count)/float64(len(program.Reports))*100)
 	}
+	return nil
 }

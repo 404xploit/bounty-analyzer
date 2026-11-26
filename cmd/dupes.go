@@ -1,10 +1,8 @@
-package main
+package cmd
 
-import (
-	"bounty-analyzer/api"
-)
+import "bounty-analyzer/api"
 
-func detectDupes(keywords string) {
-	cache := api.LoadCache()
-	api.DetectDupes(keywords, cache)
+func DetectDupes(keywords string) error {
+	api.DetectDupes(keywords, api.LoadCache())
+	return nil
 }

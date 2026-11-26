@@ -1,12 +1,16 @@
-package main
+package cmd
 
 import (
 	"fmt"
 	"time"
+
 	"bounty-analyzer/api"
 )
 
-func listZombieReports(days int) {
+func ListZombieReports(days int) error {
+	if days <= 0 {
+		return fmt.Errorf("days must be greater than zero")
+	}
 	cache := api.LoadCache()
 	threshold := time.Now().AddDate(0, 0, -days)
 	for _, program := range cache.Programs {
@@ -16,4 +20,5 @@ func listZombieReports(days int) {
 			}
 		}
 	}
+	return nil
 }

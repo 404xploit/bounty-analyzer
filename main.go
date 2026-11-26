@@ -1,44 +1,74 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
-	"log"
+	"io"
 	"os"
+
+	"bounty-analyzer/cmd"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: bounty-analyzer <command> [options]")
-		fmt.Println("Commands: analyze, zombie, dupes")
-		fmt.Println("Example: bounty-analyzer analyze --program khealth")
-		os.Exit(1)
+	if err := run(os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+}
+
+func run(args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: bounty-analyzer <analyze|zombie|dupes> [options]")
 	}
 
-	switch os.Args[1] {
+	switch args[0] {
 	case "analyze":
-		analyzeCmd := flag.NewFlagSet("analyze", flag.ExitOnError)
-		programName := analyzeCmd.String("program", "", "Program to analyze (e.g., khealth)")
-		analyzeCmd.Parse(os.Args[2:])
+		flags := flag.NewFlagSet("analyze", flag.ContinueOnError)
+		flags.SetOutput(io.Discard)
+		programName := flags.String("program", "", "HackerOne program handle")
+		if err := flags.Parse(args[1:]); err != nil {
+			return fmt.Errorf("analyze: %w", err)
+		}
+		if flags.NArg() != 0 {
+			return errors.New("analyze: unexpected positional arguments")
+		}
 		if *programName == "" {
-			log.Fatal("Please provide a program name with --program")
+			return errors.New("analyze: provide --program <handle>")
 		}
-		analyzeProgram(*programName)
+		return cmd.AnalyzeProgram(*programName)
+
 	case "zombie":
-		zombieCmd := flag.NewFlagSet("zombie", flag.ExitOnError)
-		days := zombieCmd.Int("days", 60, "Days to consider a report as zombie")
-		zombieCmd.Parse(os.Args[2:])
-		listZombieReports(*days)
-	case "dupes":
-		dupesCmd := flag.NewFlagSet("dupes", flag.ExitOnError)
-		keywords := dupesCmd.String("keywords", "", "Comma-separated keywords (e.g., graphql,idor)")
-		dupesCmd.Parse(os.Args[2:])
-		if *keywords == "" {
-			log.Fatal("Please provide keywords with --keywords")
+		flags := flag.NewFlagSet("zombie", flag.ContinueOnError)
+		flags.SetOutput(io.Discard)
+		days := flags.Int("days", 60, "Minimum age in days for a report to be considered stale")
+		if err := flags.Parse(args[1:]); err != nil {
+			return fmt.Errorf("zombie: %w", err)
 		}
-		detectDupes(*keywords)
+		if flags.NArg() != 0 {
+			return errors.New("zombie: unexpected positional arguments")
+		}
+		if *days <= 0 {
+			return errors.New("zombie: --days must be greater than zero")
+		}
+		return cmd.ListZombieReports(*days)
+
+	case "dupes":
+		flags := flag.NewFlagSet("dupes", flag.ContinueOnError)
+		flags.SetOutput(io.Discard)
+		keywords := flags.String("keywords", "", "Comma-separated report title keywords")
+		if err := flags.Parse(args[1:]); err != nil {
+			return fmt.Errorf("dupes: %w", err)
+		}
+		if flags.NArg() != 0 {
+			return errors.New("dupes: unexpected positional arguments")
+		}
+		if *keywords == "" {
+			return errors.New("dupes: provide --keywords <keyword[,keyword... ]>")
+		}
+		return cmd.DetectDupes(*keywords)
+
 	default:
-		fmt.Println("Unknown command:", os.Args[1])
-		os.Exit(1)
+		return fmt.Errorf("unknown command %q (expected analyze, zombie, or dupes)", args[0])
 	}
 }
