@@ -24,11 +24,12 @@ type Report struct {
 }
 
 type Program struct {
-	Handle          string   `json:"handle"`
-	Name            string   `json:"name"`
-	Reports         []Report `json:"reports"`
-	AvgResponseTime float64  `json:"avg_response_time"`
-	DupePercentage  float64  `json:"dupe_percentage"`
+	Handle          string    `json:"handle"`
+	Name            string    `json:"name"`
+	Reports         []Report  `json:"reports"`
+	AvgResponseTime float64   `json:"avg_response_time"`
+	DupePercentage  float64   `json:"dupe_percentage"`
+	UpdatedAt       time.Time `json:"updated_at,omitempty"`
 }
 
 type Cache struct {
@@ -50,8 +51,6 @@ func FetchProgramData(programName string) (Program, error) {
 	return FetchProgramDataWithClient(context.Background(), client, programName)
 }
 
-// FetchProgramDataWithClient fetches all public Hacktivity pages for a program.
-// The supplied client makes the request behavior testable without live API calls.
 func FetchProgramDataWithClient(ctx context.Context, client *http.Client, programName string) (Program, error) {
 	return fetchProgramData(ctx, client, hackerOneAPI, programName, waitForNextPage)
 }
@@ -126,6 +125,7 @@ func fetchProgramData(ctx context.Context, client *http.Client, baseURL, program
 		Name:           handle,
 		Reports:        reports,
 		DupePercentage: dupePercentage,
+		UpdatedAt:      time.Now().UTC(),
 	}, nil
 }
 
@@ -187,15 +187,32 @@ func waitForNextPage(ctx context.Context) error {
 }
 
 func LoadCache() Cache {
+	return LoadCacheFrom(cacheFile)
+}
+
+func LoadCacheFrom(path string) Cache {
 	cache := Cache{Programs: make(map[string]Program)}
-	data, err := os.ReadFile(cacheFile)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		log.Printf("Aviso: cache não encontrado, iniciando vazio: %v", err)
 		return cache
 	}
 	if err := json.Unmarshal(data, &cache); err != nil {
 		log.Printf("Aviso: cache corrompido, iniciando vazio: %v", err)
-		return cache
+		return Cache{Programs: make(map[string]Program)}
+	}
+	if cache.Programs == nil {
+		cache.Programs = make(map[string]Program)
+	}
+
+	// Migrate older cache files that only stored one global timestamp.
+	if !cache.LastUpdated.IsZero() {
+		for name, program := range cache.Programs {
+			if program.UpdatedAt.IsZero() {
+				program.UpdatedAt = cache.LastUpdated
+				cache.Programs[name] = program
+			}
+		}
 	}
 	return cache
 }
@@ -211,6 +228,13 @@ func SaveCache(cache Cache) {
 	if err := os.WriteFile(cacheFile, data, 0644); err != nil {
 		log.Fatalf("Erro ao salvar cache: %v", err)
 	}
+}
+
+func ProgramNeedsRefresh(program Program, exists bool, now time.Time, maxAge time.Duration) bool {
+	if !exists || program.UpdatedAt.IsZero() || maxAge <= 0 {
+		return true
+	}
+	return now.Sub(program.UpdatedAt) >= maxAge
 }
 
 func DetectDupes(keywords string, cache Cache) {

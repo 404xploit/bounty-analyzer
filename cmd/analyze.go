@@ -2,22 +2,30 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"bounty-analyzer/api"
 )
 
+const cacheMaxAge = 24 * time.Hour
+
 func AnalyzeProgram(programName string) error {
+	programName = strings.TrimSpace(programName)
+	if programName == "" {
+		return fmt.Errorf("program handle cannot be empty")
+	}
+
 	cache := api.LoadCache()
 	program, exists := cache.Programs[programName]
-	if !exists || time.Since(cache.LastUpdated).Hours() > 24 {
+	if api.ProgramNeedsRefresh(program, exists, time.Now(), cacheMaxAge) {
 		var err error
 		program, err = api.FetchProgramData(programName)
 		if err != nil {
 			return fmt.Errorf("fetch program %q: %w", programName, err)
 		}
 		cache.Programs[programName] = program
-		cache.LastUpdated = time.Now()
+		cache.LastUpdated = program.UpdatedAt
 		api.SaveCache(cache)
 	}
 
