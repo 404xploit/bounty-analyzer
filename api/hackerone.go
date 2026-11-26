@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -35,6 +36,12 @@ type Program struct {
 type Cache struct {
 	Programs    map[string]Program `json:"programs"`
 	LastUpdated time.Time          `json:"last_updated"`
+}
+
+type DuplicateMatch struct {
+	ProgramName string
+	ReportTitle string
+	Keyword     string
 }
 
 const (
@@ -271,15 +278,69 @@ func ProgramNeedsRefresh(program Program, exists bool, now time.Time, maxAge tim
 	return now.Sub(program.UpdatedAt) >= maxAge
 }
 
-func DetectDupes(keywords string, cache Cache) {
-	kwList := strings.Split(keywords, ",")
-	for _, program := range cache.Programs {
-		for _, report := range program.Reports {
-			for _, kw := range kwList {
-				if strings.Contains(strings.ToLower(report.Title), strings.ToLower(kw)) {
-					fmt.Printf("Report: %s (%s) - Keyword: %s\n", report.Title, program.Name, kw)
+func FindDuplicateMatches(keywords string, cache Cache) []DuplicateMatch {
+	type normalizedKeyword struct {
+		original string
+		lower    string
+	}
+
+	seenKeywords := make(map[string]struct{})
+	var normalized []normalizedKeyword
+	for _, keyword := range strings.Split(keywords, ",") {
+		keyword = strings.TrimSpace(keyword)
+		lower := strings.ToLower(keyword)
+		if lower == "" {
+			continue
+		}
+		if _, exists := seenKeywords[lower]; exists {
+			continue
+		}
+		seenKeywords[lower] = struct{}{}
+		normalized = append(normalized, normalizedKeyword{original: keyword, lower: lower})
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+
+	programNames := make([]string, 0, len(cache.Programs))
+	for name := range cache.Programs {
+		programNames = append(programNames, name)
+	}
+	sort.Strings(programNames)
+
+	var matches []DuplicateMatch
+	for _, name := range programNames {
+		program := cache.Programs[name]
+		reports := append([]Report(nil), program.Reports...)
+		sort.SliceStable(reports, func(i, j int) bool {
+			if reports[i].Title == reports[j].Title {
+				return reports[i].ID < reports[j].ID
+			}
+			return reports[i].Title < reports[j].Title
+		})
+		programName := program.Name
+		if programName == "" {
+			programName = name
+		}
+
+		for _, report := range reports {
+			title := strings.ToLower(report.Title)
+			for _, keyword := range normalized {
+				if strings.Contains(title, keyword.lower) {
+					matches = append(matches, DuplicateMatch{
+						ProgramName: programName,
+						ReportTitle: report.Title,
+						Keyword:     keyword.original,
+					})
 				}
 			}
 		}
+	}
+	return matches
+}
+
+func DetectDupes(keywords string, cache Cache) {
+	for _, match := range FindDuplicateMatches(keywords, cache) {
+		fmt.Printf("Report: %s (%s) - Keyword: %s\n", match.ReportTitle, match.ProgramName, match.Keyword)
 	}
 }
